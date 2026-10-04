@@ -1,0 +1,11 @@
+{
+  "name": "mis-finanzas-frontend-tests",
+  "private": true,
+  "description": "Tests for the vanilla-JS frontend (src/main/resources/static), run in jsdom with a fake API",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.0"
+  }
+}

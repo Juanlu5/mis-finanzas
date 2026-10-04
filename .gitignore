@@ -1,0 +1,9 @@
+target/
+*.class
+.idea/
+*.iml
+data/
+logs/
+muestras/
+.env
+node_modules/

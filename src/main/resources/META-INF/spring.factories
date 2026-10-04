@@ -1,0 +1,3 @@
+org.springframework.boot.EnvironmentPostProcessor=\
+com.misfinanzas.startup.DbBackupEnvironmentPostProcessor,\
+com.misfinanzas.startup.TlsKeystoreEnvironmentPostProcessor

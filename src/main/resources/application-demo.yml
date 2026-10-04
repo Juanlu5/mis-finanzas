@@ -1,0 +1,21 @@
+# The demo (./demo.sh, docs/demo.md): invented data in its own folder, on its own port, so it can run next to the
+# real app. Nothing here reaches the outside: no schedulers, no bank.
+app:
+  demo: true
+  data-dir: ./target/demo-data
+  backups-to-keep: 1
+  prices:
+    scheduled: false
+  economy:
+    scheduled: false
+  holidays:
+    scheduled: false
+  enable-banking:
+    application-id: ""
+
+server:
+  port: 8001
+
+logging:
+  file:
+    name: ${app.data-dir}/app.log

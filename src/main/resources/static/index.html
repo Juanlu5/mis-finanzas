@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mis Finanzas</title>
+<!-- first, and not deferred: sets the theme before anything is painted (no flash of the wrong theme) -->
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/vendor/fonts.css" />
+<link rel="stylesheet" href="/static/style.css" />
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/vendor/date-fns.min.js"></script>
+<script src="/static/vendor/date-fns-es.min.js"></script>
+<script src="/static/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+
+<header id="mobile-topbar">
+  <button id="mobile-menu-btn" type="button" aria-label="Abrir menú">☰</button>
+  <span id="mobile-topbar-title">💶 Mis Finanzas</span>
+</header>
+<div id="sidebar-backdrop"></div>
+
+<nav id="sidebar">
+  <h1>💶 Mis Finanzas</h1>
+  <button class="nav-btn active" data-view="dashboard">📊 Dashboard</button>
+  <button class="nav-btn" data-view="year">🗓️ Resumen del año</button>
+  <button class="nav-btn" data-view="recurring">🔁 Gastos fijos</button>
+  <button class="nav-btn" data-view="transactions">📋 Transacciones</button>
+  <button class="nav-btn" data-view="import">⬆️ Importar</button>
+  <button class="nav-btn" data-view="categories">🏷️ Categorías y reglas</button>
+  <button class="nav-btn" data-view="prices">📉 Precios <span class="nav-badge" id="prices-badge" hidden></span></button>
+  <button class="nav-btn" data-view="economy">📈 Economía <span class="nav-badge" id="economy-badge" hidden></span></button>
+  <button class="nav-btn" data-view="holidays">📅 Festivos</button>
+  <a id="backup-download" href="/api/backup/download" download style="text-decoration:none;">
+    <button id="backup-btn" type="button">💾 Descargar copia de seguridad</button>
+  </a>
+  <button id="theme-toggle" type="button"><span id="theme-toggle-icon">🌙</span> <span id="theme-toggle-label">Modo oscuro</span></button>
+</nav>
+
+<main id="main">
+
+  <div id="bank-expiry-banner" class="app-banner" role="status" hidden>
+    <p id="bank-expiry-text"></p>
+    <button class="primary" id="btn-bank-expiry-renew" type="button">Renovar ahora</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <section id="view-dashboard" class="view active">
+    <div class="view-header">
+      <h2>Dashboard</h2>
+      <div class="period-picker">
+        <label for="dashboard-period" class="sr-only">Periodo</label>
+        <select id="dashboard-period"></select>
+        <span id="dashboard-period-custom" class="period-custom" hidden>
+          <label for="dashboard-period-from">Desde</label>
+          <select id="dashboard-period-from"></select>
+          <label for="dashboard-period-to">hasta</label>
+          <select id="dashboard-period-to"></select>
+        </span>
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="card now"><div class="label">Saldo actual</div><div class="value" id="card-now">—</div><div class="delta" id="now-date"></div></div>
+      <div class="card income"><div class="label">Ingresos</div><div class="value" id="card-income">€0</div><div class="avg" id="avg-income"></div><div class="delta" id="delta-income"></div></div>
+      <div class="card expense"><div class="label">Gastos</div><div class="value" id="card-expense">€0</div><div class="avg" id="avg-expense"></div><div class="delta" id="delta-expense"></div></div>
+      <div class="card balance"><div class="label" title="Ingresos menos gastos del periodo: lo que has ahorrado (o, si es negativo, gastado de más)">Ahorro</div><div class="value" id="card-balance">€0</div><div class="avg" id="avg-balance"></div><div class="delta" id="delta-balance"></div></div>
+    </div>
+
+    <div class="panel" id="balance-panel" style="margin-bottom:16px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+        <h3 style="margin:0;">Evolución del balance <span id="balance-context" class="muted"></span></h3>
+        <select id="balance-account" style="display:none;"></select>
+      </div>
+      <div class="chart-wrap chart-wrap-balance"><canvas id="chart-balance"></canvas></div>
+      <p id="balance-empty" class="empty" style="display:none;"></p>
+    </div>
+
+    <div class="charts-row">
+      <div class="panel">
+        <h3>Ingresos vs. gastos <span id="monthly-grouping" class="muted"></span></h3>
+        <div class="chart-wrap"><canvas id="chart-monthly"></canvas></div>
+      </div>
+      <div class="panel">
+        <h3>Gastos por categoría</h3>
+        <p class="hint chart-hint">Pulsa una categoría para ver sus movimientos.</p>
+        <div class="chart-wrap"><canvas id="chart-category"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- YEARLY SUMMARY -->
+  <section id="view-year" class="view">
+    <div class="view-header">
+      <h2>Resumen del año</h2>
+      <div class="period-picker">
+        <label for="year-select" class="sr-only">Año</label>
+        <select id="year-select"></select>
+      </div>
+    </div>
+    <p id="year-coverage" class="hint year-coverage"></p>
+    <p id="year-empty" class="empty" hidden>Todavía no hay movimientos. Importa un extracto o descárgalos del banco.</p>
+
+    <div id="year-content">
+      <div class="cards">
+        <div class="card income"><div class="label">Ingresos</div><div class="value" id="year-income">—</div><div class="avg" id="year-avg-income"></div><div class="delta" id="year-delta-income"></div></div>
+        <div class="card expense"><div class="label">Gastos</div><div class="value" id="year-expense">—</div><div class="avg" id="year-avg-expense"></div><div class="delta" id="year-delta-expense"></div></div>
+        <div class="card balance"><div class="label">Ahorro</div><div class="value" id="year-balance">—</div><div class="avg" id="year-avg-balance"></div><div class="delta" id="year-delta-balance"></div></div>
+        <div class="card rate"><div class="label">Tasa de ahorro</div><div class="value" id="year-rate">—</div><div class="avg" id="year-rate-note"></div><div class="delta" id="year-delta-rate"></div></div>
+      </div>
+
+      <div class="charts-row year-row">
+        <div class="panel">
+          <h3>Lo más destacado</h3>
+          <ul id="year-highlights" class="year-highlights"></ul>
+          <p id="year-highlights-note" class="hint"></p>
+        </div>
+        <div class="panel">
+          <h3>Los gastos más grandes</h3>
+          <ol id="year-top-expenses" class="year-top"></ol>
+          <p id="year-top-empty" class="empty" hidden>Ningún gasto este año.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>En qué se fue el dinero</h3>
+        <p class="hint chart-hint">Pulsa una categoría para ver sus movimientos.</p>
+        <ul id="year-categories" class="year-categories"></ul>
+        <p id="year-categories-empty" class="empty" hidden>Ningún gasto este año.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRANSACTIONS -->
+  <section id="view-transactions" class="view">
+    <div class="view-header">
+      <h2>Transacciones</h2>
+    </div>
+    <div class="filters">
+      <label for="tx-month" class="sr-only">Periodo</label>
+      <select id="tx-month"><option value="">Todos los meses</option></select>
+      <span id="tx-month-custom" class="period-custom" hidden>
+        <label for="tx-month-from">Desde</label>
+        <select id="tx-month-from"></select>
+        <label for="tx-month-to">hasta</label>
+        <select id="tx-month-to"></select>
+      </span>
+      <select id="tx-category"><option value="">Todas las categorías</option></select>
+      <select id="tx-account"><option value="">Todas las cuentas</option></select>
+      <input type="search" id="tx-search" placeholder="Buscar en la descripción..." />
+      <select id="tx-kind" aria-label="Tipo de movimiento">
+        <option value="">Gastos e ingresos</option>
+        <option value="expense">Solo gastos</option>
+        <option value="income">Solo ingresos</option>
+      </select>
+      <span class="amount-filter">
+        <input type="text" id="tx-amount-min" inputmode="decimal" autocomplete="off" placeholder="Importe desde €" aria-label="Importe desde, en euros" aria-describedby="tx-amount-msg" />
+        <input type="text" id="tx-amount-max" inputmode="decimal" autocomplete="off" placeholder="hasta €" aria-label="Importe hasta, en euros" aria-describedby="tx-amount-msg" />
+      </span>
+      <span id="tx-amount-msg" class="filter-msg" role="status"></span>
+    </div>
+    <div class="bulk-bar" id="bulk-bar" hidden>
+      <span id="bulk-count">0 seleccionadas</span>
+      <select id="bulk-category"></select>
+      <button class="ghost" id="bulk-apply-category">Aplicar categoría</button>
+      <button class="ghost" id="bulk-delete" style="color:var(--expense); border-color:var(--expense);">Eliminar seleccionadas</button>
+      <button class="ghost" id="bulk-clear">Cancelar selección</button>
+    </div>
+    <section class="rule-suggest" id="rule-suggest" aria-labelledby="rule-suggest-title" hidden>
+      <p id="rule-suggest-title" class="rule-suggest-title">¿Quieres que la app lo aprenda para la próxima vez?</p>
+      <div class="rule-suggest-row">
+        <label for="rule-suggest-keyword">Los movimientos que contengan</label>
+        <input type="text" id="rule-suggest-keyword" autocomplete="off" spellcheck="false" />
+        <span>irán a <strong id="rule-suggest-category"></strong>.</span>
+      </div>
+      <p id="rule-suggest-impact" class="hint" role="status"></p>
+      <div class="import-actions">
+        <button class="primary" id="rule-suggest-apply">Crear regla y aplicar</button>
+        <button class="primary" id="rule-suggest-create">Crear regla</button>
+        <button class="ghost" id="rule-suggest-dismiss">Ahora no</button>
+      </div>
+    </section>
+    <div class="table-scroll">
+    <table class="tx-table">
+      <colgroup>
+        <col style="width:34px" />
+        <col style="width:116px" />
+        <col style="width:150px" />
+        <col />
+        <col style="width:90px" />
+        <col style="width:186px" />
+        <col style="width:100px" />
+        <col style="width:82px" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="tx-select-all" /></th>
+          <th data-sort="date"><button type="button" class="sort-btn">Fecha</button></th>
+          <th data-sort="accounting_month" title="Mes al que se imputa este movimiento en los gráficos. Por defecto es el mes de la fecha real, pero puedes cambiarlo (útil para nóminas que llegan tarde/pronto o se solapan)."><button type="button" class="sort-btn">Mes contable ⓘ</button></th>
+          <th data-sort="description"><button type="button" class="sort-btn">Descripción</button></th>
+          <th data-sort="account"><button type="button" class="sort-btn">Cuenta</button></th>
+          <th data-sort="category"><button type="button" class="sort-btn">Categoría</button></th>
+          <th data-sort="amount" style="text-align:right"><button type="button" class="sort-btn">Importe</button></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tx-table-body"></tbody>
+    </table>
+    </div>
+    <div class="pager" id="tx-pager" hidden>
+      <span id="tx-range"></span>
+      <span class="pager-controls">
+        <label>Filas por página
+          <select id="tx-page-size">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </label>
+        <button type="button" class="ghost" id="tx-prev">← Anterior</button>
+        <span id="tx-page-label"></span>
+        <button type="button" class="ghost" id="tx-next">Siguiente →</button>
+      </span>
+    </div>
+  </section>
+
+  <!-- IMPORT -->
+  <section id="view-import" class="view">
+    <div class="view-header"><h2>Importar movimientos</h2></div>
+
+    <div id="import-tabs-wrap">
+      <div class="tabs" role="tablist" aria-label="Origen de los movimientos">
+        <button type="button" role="tab" class="tab" id="tab-import-file" data-tab="file" aria-controls="panel-import-file" aria-selected="true">Subir archivo</button>
+        <button type="button" role="tab" class="tab" id="tab-import-bank" data-tab="bank" aria-controls="panel-import-bank" aria-selected="false" tabindex="-1">Descargar del banco</button>
+      </div>
+
+      <div id="panel-import-file" role="tabpanel" aria-labelledby="tab-import-file">
+        <div class="import-account">
+          <label for="import-account">Cuenta</label>
+          <input type="text" id="import-account" list="import-accounts" autocomplete="off"
+                 placeholder="Elige una o escribe un nombre nuevo" />
+          <datalist id="import-accounts"></datalist>
+        </div>
+
+        <p id="import-error" class="form-error" role="alert" hidden></p>
+
+        <div id="import-step-upload">
+          <button type="button" class="dropzone" id="dropzone">
+            <span class="dropzone-idle">
+              <strong>Arrastra aquí tu archivo</strong> (CSV o Excel) o haz clic para elegirlo.
+              <small>Exporta el extracto desde la web o la app de tu banco.</small>
+            </span>
+            <span class="dropzone-busy">Leyendo el archivo…</span>
+          </button>
+          <input type="file" id="file-input" accept=".csv,.xlsx,.xls" hidden />
+        </div>
+
+        <div id="import-step-preview" hidden>
+          <p id="import-summary-text"></p>
+
+          <fieldset class="mapping">
+            <legend>¿Qué columna es cada dato?</legend>
+            <div class="mapping-grid">
+              <div><label for="map-date">Fecha <span class="req" title="obligatorio">*</span></label><select id="map-date"></select></div>
+              <div><label for="map-description">Descripción <span class="req" title="obligatorio">*</span></label><select id="map-description"></select></div>
+              <div><label for="map-description-extra">Detalle adicional (opcional)</label><select id="map-description-extra"></select></div>
+              <div><label for="map-balance">Saldo o disponible (opcional)</label><select id="map-balance"></select></div>
+            </div>
+          </fieldset>
+
+          <fieldset class="mapping">
+            <legend>Importe <span class="req" title="obligatorio">*</span></legend>
+            <p class="hint">Una columna con el importe (gastos en negativo) o, si tu banco separa cargos y abonos, una para cada uno. Usa solo una de las dos formas.</p>
+            <div class="mapping-grid">
+              <div class="span-2"><label for="map-amount">Una columna con el importe</label><select id="map-amount"></select></div>
+              <div><label for="map-debit">…o columna de cargos (gastos)</label><select id="map-debit"></select></div>
+              <div><label for="map-credit">…y columna de abonos (ingresos)</label><select id="map-credit"></select></div>
+            </div>
+          </fieldset>
+
+          <div class="panel" style="overflow-x:auto; margin-bottom:16px;">
+            <h3>Vista previa <span id="preview-count" class="muted"></span></h3>
+            <table id="preview-table"><thead></thead><tbody></tbody></table>
+          </div>
+
+          <p id="import-hint" class="hint-warn" role="status"></p>
+          <div class="import-actions">
+            <button class="primary" id="btn-confirm-import">Importar transacciones</button>
+            <button class="ghost" id="btn-cancel-import">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel-import-bank" role="tabpanel" aria-labelledby="tab-import-bank" hidden>
+        <div id="bank-sync-not-linked">
+          <p id="bank-sync-expired" class="feedback error" hidden></p>
+          <p class="hint" style="margin-top:0;">
+            Vincula tu cuenta de BBVA a través de <strong>Enable Banking</strong>, un intermediario de open
+            banking con licencia europea: la contraseña de tu banco no pasa nunca por esta app, solo por la
+            propia web o app de BBVA. La autorización dura unos meses; pasado ese tiempo tendrás que repetir
+            este paso.
+          </p>
+          <button class="primary" id="btn-bank-link">Vincular con BBVA</button>
+          <p id="bank-sync-feedback" class="feedback" role="status" hidden></p>
+        </div>
+
+        <div id="bank-sync-linked" hidden>
+          <p class="hint" style="margin-top:0;">
+            Vinculado con <strong id="bank-sync-aspsp">BBVA</strong> — la autorización caduca el
+            <strong id="bank-sync-valid-until">—</strong>.
+          </p>
+          <div id="bank-renew" class="bank-renew" hidden>
+            <p id="bank-renew-text"></p>
+            <button class="primary" id="btn-bank-renew" type="button">Renovar autorización</button>
+            <p id="bank-renew-feedback" class="feedback" role="status" hidden></p>
+          </div>
+
+          <div class="mapping-grid">
+            <div class="span-2">
+              <label for="bank-account">Cuenta</label>
+              <input type="text" id="bank-account" list="import-accounts" autocomplete="off"
+                     placeholder="Elige una o escribe un nombre nuevo" />
+            </div>
+          </div>
+
+          <p id="bank-auto-range" class="hint" role="status"></p>
+          <div class="import-actions">
+            <button class="primary" id="btn-bank-update" disabled>Actualizar movimientos</button>
+          </div>
+
+          <details id="bank-custom-range" class="bank-custom-range">
+            <summary>Elegir fechas</summary>
+            <div class="mapping-grid">
+              <div><label for="bank-date-from">Desde</label><input type="date" id="bank-date-from" /></div>
+              <div><label for="bank-date-to">Hasta</label><input type="date" id="bank-date-to" /></div>
+            </div>
+            <p id="bank-sync-hint" class="hint-warn" role="status"></p>
+            <div class="import-actions">
+              <button class="ghost" id="btn-bank-import">Importar este rango</button>
+            </div>
+          </details>
+
+          <p id="bank-sync-error" class="form-error" role="alert" hidden></p>
+          <div class="import-actions bank-unlink-row">
+            <button class="ghost" id="btn-bank-unlink">Desvincular</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="import-step-result" class="panel import-result" hidden>
+      <h3>Importación completada</h3>
+      <div class="result-stats">
+        <div class="result-added"><span class="result-num" id="result-added">0</span><span class="result-label">añadidas</span></div>
+        <div><span class="result-num" id="result-duplicates">0</span><span class="result-label">ya existían</span></div>
+        <div><span class="result-num" id="result-errors">0</span><span class="result-label">con errores</span></div>
+      </div>
+      <ul id="result-notes" class="result-notes"></ul>
+      <div class="import-actions">
+        <button class="primary" id="btn-view-transactions">Ver transacciones</button>
+        <button class="ghost" id="btn-import-another">Importar otro archivo</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CATEGORIES -->
+  <section id="view-categories" class="view">
+    <div class="view-header"><h2>Categorías y reglas</h2></div>
+
+    <div class="tabs" role="tablist" aria-label="Secciones">
+      <button type="button" role="tab" class="tab" id="tab-categories" data-tab="categories" aria-controls="panel-categories" aria-selected="true">Categorías</button>
+      <button type="button" role="tab" class="tab" id="tab-rules" data-tab="rules" aria-controls="panel-rules" aria-selected="false" tabindex="-1">Reglas <span class="tab-count" id="rules-count"></span></button>
+      <button type="button" role="tab" class="tab" id="tab-security" data-tab="security" aria-controls="panel-security" aria-selected="false" tabindex="-1">Seguridad</button>
+    </div>
+
+    <div id="panel-categories" role="tabpanel" aria-labelledby="tab-categories">
+      <div class="panel">
+        <p class="hint" style="margin-top:0;">
+          Cada movimiento pertenece a una categoría. «Sin categorizar» recibe los que ninguna regla reconoce y no se puede eliminar.
+        </p>
+        <div class="categories-list" id="categories-list"></div>
+        <form class="inline-add" id="form-add-category">
+          <input type="text" id="new-category-name" placeholder="Nombre de la categoría" aria-label="Nombre de la categoría" required />
+          <select id="new-category-kind" aria-label="Tipo">
+            <option value="expense">Gasto</option>
+            <option value="income">Ingreso</option>
+          </select>
+          <button class="primary" type="submit">Añadir</button>
+        </form>
+        <p id="category-feedback" class="feedback" role="status" hidden></p>
+      </div>
+    </div>
+
+    <div id="panel-rules" role="tabpanel" aria-labelledby="tab-rules" hidden>
+      <div class="panel">
+        <h3>Reglas de categorización automática</h3>
+        <p class="hint" style="margin-top:-6px;">
+          Si la descripción de un movimiento contiene la palabra clave, se le asigna esa categoría al importar.
+          Si coinciden varias reglas, gana la palabra clave más larga («uber eats» antes que «uber»).
+        </p>
+        <form class="inline-add" id="form-add-rule">
+          <input type="text" id="new-rule-keyword" placeholder="Palabra clave (ej: mercadona)" aria-label="Palabra clave" required />
+          <select id="new-rule-category" aria-label="Categoría"></select>
+          <button class="primary" type="submit">Añadir regla</button>
+        </form>
+        <label class="check"><input type="checkbox" id="new-rule-whole" /> Solo palabra completa <span class="muted">(«dia» no coincidirá dentro de «media markt»)</span></label>
+        <p id="rule-feedback" class="feedback" role="status" hidden></p>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <div class="rules-toolbar">
+          <input type="search" id="rules-filter" placeholder="Filtrar por palabra clave o categoría…" aria-label="Filtrar reglas" />
+          <span id="rules-summary" class="muted"></span>
+        </div>
+        <div id="rules-list"></div>
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
+        <h3>Aplicar las reglas a lo ya importado</h3>
+        <p class="hint" style="margin-top:-6px;">
+          Al importar, las reglas se aplican solas. Este botón las aplica a los movimientos que siguen en «Sin categorizar»
+          (útil tras añadir reglas nuevas). Los que ya tienen categoría no se tocan.
+        </p>
+        <button class="ghost" id="btn-apply-rules">Aplicar reglas</button>
+        <span id="pending-info" class="muted" style="margin-left:10px;"></span>
+      </div>
+    </div>
+
+    <div id="panel-security" role="tabpanel" aria-labelledby="tab-security" hidden>
+      <div class="panel">
+        <h3>Contraseña</h3>
+        <p class="hint" style="margin-top:-6px;">
+          Usuario: <strong id="auth-username">—</strong>. La nueva contraseña la usarás la próxima vez que inicies sesión;
+          no hay forma de recuperarla si la olvidas, así que escríbela dos veces.
+        </p>
+        <form class="password-form" id="form-change-password">
+          <input type="text" name="username" autocomplete="username" hidden />
+          <label>Contraseña actual<input type="password" id="current-password" autocomplete="current-password" required /></label>
+          <label>Contraseña nueva (mín. 6)<input type="password" id="new-password" autocomplete="new-password" required /></label>
+          <label>Repite la nueva<input type="password" id="repeat-password" autocomplete="new-password" required /></label>
+          <div><button class="primary" type="submit">Cambiar contraseña</button></div>
+        </form>
+        <p id="password-feedback" class="feedback" role="status" hidden></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ECONOMY -->
+  <section id="view-economy" class="view">
+    <div class="view-header">
+      <h2>Economía</h2>
+      <div class="period-picker">
+        <label for="economy-region" class="sr-only">Comunidad</label>
+        <select id="economy-region"></select>
+      </div>
+    </div>
+    <p class="hint economy-intro">Datos públicos del INE, el Ministerio, Red Eléctrica, el Banco de España, el BCE y Eurostat, sobre España o la comunidad que elijas. Se actualizan solos mientras la app está abierta. Pulsa el título de una sección para plegarla o desplegarla.</p>
+    <p id="economy-empty" class="empty" hidden>Descargando los datos por primera vez… Vuelve en unos minutos.</p>
+
+    <div id="economy-content">
+      <details class="economy-block" data-block="prices" open>
+        <summary class="economy-section">🛒 Precios</summary>
+        <div class="economy-prices-layout">
+          <div class="economy-stack">
+            <div id="economy-prices"></div>
+            <div class="panel">
+              <h3>Lo que más cambia en España <span id="economy-items-when" class="muted"></span></h3>
+              <div class="economy-items">
+                <div><h4>Más sube</h4><ol id="economy-items-up"></ol></div>
+                <div><h4>Más baja</h4><ol id="economy-items-down"></ol></div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>Por grupos <span id="economy-groups-when" class="muted"></span></h3>
+            <ul id="economy-groups" class="economy-groups"></ul>
+          </div>
+        </div>
+      </details>
+
+      <details class="economy-block" data-block="housing" open>
+        <summary class="economy-section">🏠 Vivienda</summary>
+        <div class="economy-grid" id="economy-housing"></div>
+      </details>
+
+      <details class="economy-block" data-block="daily" open>
+        <summary class="economy-section">⛽ Precios del día</summary>
+        <div class="economy-grid" id="economy-daily"></div>
+      </details>
+
+      <details class="economy-block" data-block="money" open>
+        <summary class="economy-section">💶 Dinero e hipotecas</summary>
+        <div class="economy-grid" id="economy-money"></div>
+      </details>
+
+      <details class="economy-block" data-block="jobs" open>
+        <summary class="economy-section">👷 Empleo y sueldos</summary>
+        <div class="economy-grid" id="economy-jobs"></div>
+      </details>
+
+      <details class="economy-block" data-block="europe" open>
+        <summary class="economy-section">🇪🇺 España frente a Europa</summary>
+        <div class="economy-grid" id="economy-europe"></div>
+      </details>
+
+      <details class="economy-block" data-block="sources" open>
+        <summary class="economy-section">Fuentes</summary>
+        <div class="panel economy-sources">
+          <ul id="economy-sources"></ul>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- HOLIDAYS -->
+  <section id="view-recurring" class="view">
+    <div class="view-header"><h2>Gastos fijos y suscripciones</h2></div>
+    <p class="hint recurring-intro">Lo que se cobra solo cada mes, cada 2 o 3 meses o cada año, encontrado en tus movimientos
+      de los últimos 2 años. Hacen falta tres cobros parecidos (dos si es anual).</p>
+    <p id="recurring-empty" class="empty" hidden>Todavía no se ve ningún pago que se repita.</p>
+
+    <div id="recurring-content">
+      <div class="cards recurring-cards">
+        <div class="card expense"><div class="label">Al mes</div><div class="value" id="recurring-monthly">—</div><div class="avg" id="recurring-count"></div></div>
+        <div class="card expense"><div class="label">Al año</div><div class="value" id="recurring-yearly">—</div><div class="avg">Lo mismo, por 12</div></div>
+        <div class="card" id="recurring-share-card"><div class="label">De lo que entra</div><div class="value" id="recurring-share">—</div><div class="avg" id="recurring-share-note"></div></div>
+      </div>
+
+      <div class="panel">
+        <h3>Lo que pagas ahora</h3>
+        <ul id="recurring-active" class="recurring-list"></ul>
+      </div>
+
+      <div class="panel" id="recurring-ended-panel">
+        <h3>Ya no se cobran</h3>
+        <p class="hint chart-hint">Si alguno vuelve a cobrarse, sube solo a la lista de arriba.</p>
+        <ul id="recurring-ended" class="recurring-list"></ul>
+      </div>
+
+      <details class="panel recurring-hidden" id="recurring-hidden-panel">
+        <summary>Los que no cuentas (<span id="recurring-hidden-count">0</span>)</summary>
+        <p class="hint">Pagos que se repiten pero que dijiste que no son un gasto fijo: no suman en los totales.</p>
+        <ul id="recurring-hidden" class="recurring-list"></ul>
+      </details>
+    </div>
+  </section>
+
+  <section id="view-holidays" class="view">
+    <div class="view-header"><h2>Festivos y puentes</h2></div>
+
+    <div id="holidays-content">
+      <div class="holidays-top">
+        <div class="holiday-next" id="holiday-next"></div>
+        <p id="holiday-notes" class="hint"></p>
+      </div>
+
+      <div class="charts-row holidays-row">
+        <div class="panel">
+          <h3>Puentes de los próximos 12 meses</h3>
+          <p class="hint chart-hint">Con tus festivos de <span id="holiday-work-name"></span>, trabajando de lunes a viernes.</p>
+          <ul id="holiday-bridges" class="holiday-list"></ul>
+        </div>
+        <div class="panel" id="holiday-home-panel">
+          <h3>Festivo en <span id="holiday-home-name"></span>, laborable para ti</h3>
+          <p class="hint chart-hint">Días para ir a casa: lo que te da cogerlos de vacaciones.</p>
+          <ul id="holiday-home-only" class="holiday-list"></ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Calendario</h3>
+        <div id="holiday-calendar" class="holiday-calendar"></div>
+      </div>
+    </div>
+
+    <details class="panel holiday-settings" id="holiday-settings">
+      <summary>⚙️ Tus calendarios</summary>
+      <form id="holiday-places-form" class="holiday-places">
+        <fieldset>
+          <legend>Donde trabajas <span class="muted">(marca tus días libres)</span></legend>
+          <label>Comunidad <select id="hol-work-region"></select></label>
+          <label id="hol-work-town-label">Municipio
+            <input type="text" id="hol-work-town" list="hol-towns" autocomplete="off" placeholder="Escribe tu municipio" />
+          </label>
+        </fieldset>
+        <fieldset>
+          <legend>Tu otro calendario <span class="muted">(por ejemplo, tu pueblo)</span></legend>
+          <label>Comunidad <select id="hol-home-region"><option value="">Ninguno</option></select></label>
+          <label>Pueblo o ciudad <input type="text" id="hol-home-town" autocomplete="off" /></label>
+        </fieldset>
+        <datalist id="hol-towns"></datalist>
+        <div><button class="primary" type="submit">Guardar</button></div>
+        <p id="holiday-places-feedback" class="feedback" role="status" hidden></p>
+      </form>
+
+      <h4>Fiestas locales que apuntas tú</h4>
+      <p class="hint">Los festivos locales de Cataluña salen solos; los de otros sitios los publica cada ayuntamiento: apúntalos aquí.</p>
+      <form id="holiday-day-form" class="holiday-day-form">
+        <select id="hol-day-role" aria-label="Calendario"></select>
+        <input type="date" id="hol-day-date" aria-label="Fecha" required />
+        <input type="text" id="hol-day-name" placeholder="Nombre (por ejemplo, San Isidro)" aria-label="Nombre" required maxlength="80" />
+        <button class="ghost" type="submit">Añadir</button>
+      </form>
+      <p id="holiday-day-feedback" class="feedback" role="status" hidden></p>
+      <ul id="holiday-manual" class="holiday-list"></ul>
+    </details>
+  </section>
+
+  <!-- PRICES -->
+  <section id="view-prices" class="view">
+    <div class="view-header"><h2>Seguimiento de precios</h2></div>
+
+    <div class="panel">
+      <form class="price-add" id="form-add-price">
+        <label for="price-url" class="sr-only">Enlace del producto</label>
+        <input type="text" id="price-url" inputmode="url" autocomplete="off" spellcheck="false"
+               placeholder="Pega aquí el enlace del producto (https://…)" />
+        <label for="price-target" class="sr-only">Avísame si baja de (opcional)</label>
+        <input type="text" id="price-target" inputmode="decimal" autocomplete="off" placeholder="Avísame si baja de… (opcional)" />
+        <button class="primary" type="submit" id="price-add-btn">Seguir precio</button>
+      </form>
+      <p class="hint">
+        Funciona con las tiendas que dejan leer el precio de sus páginas, como CholloStyle (moda). Muchas grandes
+        (Zalando, idealo, Zara, PcComponentes…) bloquean a los programas: al pegar el enlace te dirá si se puede, y
+        para esas lo práctico son sus propios avisos. Los precios se comprueban al poco de abrir la app y luego cada
+        6 horas mientras está abierta.
+      </p>
+      <p id="price-feedback" class="feedback" role="status" hidden></p>
+    </div>
+
+    <p id="price-summary" class="price-summary" role="status"></p>
+    <div id="price-list" class="price-list"></div>
+    <p id="price-empty" class="empty" hidden>Todavía no sigues ningún producto. Pega arriba el enlace de uno.</p>
+  </section>
+
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="/static/app.js"></script>
+<script src="/static/views/dashboard.js"></script>
+<script src="/static/views/year.js"></script>
+<script src="/static/views/recurring.js"></script>
+<script src="/static/views/transactions.js"></script>
+<script src="/static/views/import.js"></script>
+<script src="/static/views/bank.js"></script>
+<script src="/static/views/categories.js"></script>
+<script src="/static/views/prices.js"></script>
+<script src="/static/views/economy.js"></script>
+<script src="/static/views/holidays.js"></script>
+<script src="/static/start.js"></script>
+</body>
+</html>

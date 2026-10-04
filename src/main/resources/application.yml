@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: mis-finanzas
+  datasource:
+    url: jdbc:sqlite:${app.data-dir:./data}/finanzas.db
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 25MB
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true
+
+app:
+  data-dir: ./data
+  # Serve over HTTPS with a self-signed certificate generated into data/tls/ (see
+  # TlsKeystoreEnvironmentPostProcessor). false = plain http, e.g. --app.https.enabled=false.
+  https:
+    enabled: true
+  # Startup backups in data/backups/: the newest this many are always kept; older ones are thinned out
+  # to one a day (2 weeks), one a week (2 months) and one a month (1 year). See DbBackupEnvironmentPostProcessor.
+  backups-to-keep: 10
+  enable-banking:
+    # The Enable Banking application id, issued when you register an application on their site (used as
+    # the JWT "kid"). Not a secret by itself, but nothing works without it either.
+    application-id: ${ENABLE_BANKING_APP_ID:}
+    # The RSA private key (.pem) generated at the same time, downloaded and placed here by hand — never
+    # committed (data/ is gitignored), and not covered by the automatic DB backup (it's a static app
+    # credential, not user data; if lost, generate a new one from the Enable Banking dashboard).
+    private-key-path: ${app.data-dir:./data}/enablebanking/private_key.pem
+
+server:
+  port: 8000
+
+logging:
+  file:
+    name: logs/app.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 10
+  level:
+    org.hibernate.SQL: warn
